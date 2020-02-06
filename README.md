@@ -1,58 +1,73 @@
 # Organism
 
-Organism is a high-accuracy [Organya] to raw audio conversion tool.\
-It is written in Rust, and aims to be fast, easy to use,\
-and produce [as accurate as possible](#accuracy) conversions.
+Organism is an [Organya] to wave audio conversion program.\
+It is written in Rust, and aims to be fast, easy to use,
+and produce [highly accurate](#accuracy) conversions.
 
-# Why?
+Right now, the code works, and is roughly on par with [in\_org] in terms of sound quality ([demo](https://www.youtube.com/watch?v=j_btVvNkWnM)).\
+However, the code is pretty messy and requires a lot of refactoring, as well as some tweaks to mixing.\
+By no means is this a finished product yet!
 
-I absolutely adore Cave Story, and always wanted a proper "true to life" conversion of its music I
-could listen to wherever.
+## Prior Art
 
-However, the soundtrack never got an official release, and most if not all conversion tools prior to
-[2018](#references) didn't get it right, and fixing them would have been far too difficult.
+Programs that have
 
-# Prior Art
+- [in\_org], a plugin for Winamp. It has issues with playing drum tracks at low pitches.
 
-Several attempts at achieving this were made before, with varrying issues.
+- [Org2Raw], built with code from the [Cave Story Engine 2][CSE2] project. I can't find the source code for it, and it's rather clunky to use.
 
-- [in\_org], a plugin for Winamp. Winamp is largely dead, and the plugin had issues with percussion
-  at low pitches. I tried fixing it, but to no avail.
-- [Org2Raw], which was built from code from the Cave Story Engine 2 decompilation project, and while
-  probably very accurate, is pretty limited (and I couldn't get it to work correctly...)
-- [Org2XM], which worked well but got several technical details of the Organya format wrong, wasn't easy to use, and of course, required conversion from XM to WAV.
+- [Org2XM], which converts Organya files to FastTracker modules. Requires two-step conversion and the original code is pretty outdated. I might build my own some day.
 
-What most people ended up doing was just recording their soundcard output in Audacity, which works, but
-isn't pretty by any means.
+- Recording Org Maker or Cave Story in Audacity. Requires lots of manual effort and depends on hardware.
 
-Organism aims to provide accurate and fast emulation of the Cave Story music engine, while having
-well-documented, modern code, a simple command line interface and, in true unix fashion, be easily
-composable with other programs, such as audio encoders (lame, oggenc, flac, ffmpeg), or audio
-playback programs (aplay).
 
-# Accuracy
+## Accuracy
 
-The original Cave Story music playback engine is built on Microsoft's DirectSound APIs and Windows
-MM timers.
+Several aspects of the Organya format and Pixel's original code need to be considered when talking about accuracy.
 
-Pretty much all playback relies on DirectSound sample buffers, which are fairly primitive and
-can be emulated very accurately.
+#### Format
 
-Timers are a lot more tricky, and not extremely consistent.\
-Organism instead does millisecond timing using sample counting.\
-Essentially, it counts how many samples it has processed to determine how much time has passed.
+Org Maker and Cave Story do not verify that Organya files are valid aside from checking the magic number.
 
-Another issue are the percussion samples. Cave Story used another format, PixTone, for them, which would require its own emulation as well.\
-Pixel's Org Maker program, instead uses WAV samples, which are
-a lot easier to deal with. PixTone support is planned for the future though.
+This can cause all sorts of mayhem, so Organism validates all files beforehand.
 
-### Source Code References
+TODO: Explain `--permissive` to allow stuff that could work in the Organya format, but isn't allowed by Pixel's implementation
 
-Alongside my own experimentation with the file format and various versions of Org Maker, these projects have provided a lot of insight into how Cave Story's music engine works.
+#### Sound
+
+Pixel's engine is built on Microsoft's (now deprecated) DirectSound APIs.
+
+All playback happens through DirectSound buffers, and frequency, volume, and pan
+controls can all be emulated very easily.
+
+#### Timing
+
+Timing is done using Windows Multimedia Timers.\
+This means that playback speed is never 100% consistent, though fluctuations are minimal.
+
+Since Organism does not provide real-time playback, timing is done by counting
+the number of processed samples.
+
+#### Percussion
+
+While Org Maker and Org View use regular Wave files for the percussion samples,
+Cave Story uses Pixel's own format, PixTone, which will require its own emulation.
+
+PixTone support may be added in the future.
+
+#### Fidelity
+
+Due to several oddities in Pixel's code, the melody instruments often produce a 'pop' sound at the start and end of notes.
+
+The details of this are fuzzy, so this is *not* emulated.
+
+## Code References
+
+Alongside my own experimentation with existing tools, these projects have provided a lot of insight into how Organya works.
 
 [Org Maker 2], which was built using the original code by Pixel, which is largely still intact.
 
-The [Cave Story Engine 2][CSE2] project, which aims to create a bit-perfect decompilation of the original game.
+[Cave Story Engine 2][CSE2], which aims to create a bit-perfect decompilation of the original game.
 
 [Organya]: https://www.cavestory.org/download/music.php
 [in\_org]: https://github.com/Yukitty/in_org
@@ -60,3 +75,7 @@ The [Cave Story Engine 2][CSE2] project, which aims to create a bit-perfect deco
 [Org2XM]: https://github.com/Clownacy/org2xm
 [Org Maker 2]: https://github.com/shbow/organya
 [CSE2]: https://github.com/Clownacy/Cave-Story-Engine-2
+
+## License
+
+Organism is released under the MPL-2.0 license. See [LICENSE](./LICENSE) for more information.

@@ -8,3 +8,6 @@ homepage = "https://gitdab.com/LunarLambda/organism"
 repository = "https://gitdab.com/LunarLambda/organism"
 readme = "README.md"
 license = "MPL-2.0"
+
+[dependencies]
+byteorder = "1.3"

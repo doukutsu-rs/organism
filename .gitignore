@@ -1,2 +1,8 @@
 /target
 **/*.rs.bk
+/assets/orgs
+/assets/samples/*
+!/assets/samples/Samples.bnk
+!/assets/samples/mkbank
+*.raw
+NOTES*
