@@ -8,6 +8,8 @@ Right now, the code works, and is roughly on par with [in\_org] in terms of soun
 However, the code is pretty messy and requires a lot of refactoring, as well as some tweaks to mixing.\
 By no means is this a finished product yet!
 
+To use it, run `cargo run -- <organya file> | aplay -traw -fU8 -r44100 -c2`.
+
 ## Prior Art
 
 Programs that have
@@ -29,9 +31,7 @@ Several aspects of the Organya format and Pixel's original code need to be consi
 
 Org Maker and Cave Story do not verify that Organya files are valid aside from checking the magic number.
 
-This can cause all sorts of mayhem, so Organism validates all files beforehand.
-
-TODO: Explain `--permissive` to allow stuff that could work in the Organya format, but isn't allowed by Pixel's implementation
+This can cause all sorts of mayhem, so Organism will validate all files beforehand. (TODO!)
 
 #### Sound
 
