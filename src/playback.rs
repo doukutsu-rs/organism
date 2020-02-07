@@ -201,11 +201,30 @@ fn mix(dst: &mut [u16], dst_fmt: WavFormat, srcs: &mut [RenderBuffer]) {
                 }
             }
 
+            // s1: sample 1
+            // s2: sample 2
+            // sp: previous sample (before s1)
+            // sn: next sample (after s2)
+            // mu: position to interpolate for
+            fn cubic_interp(s1: f32, s2: f32, sp: f32, sn: f32, mu: f32) -> f32 {
+                let mu2 = mu * mu;
+                let a0 = sn - s2 - sp + s1;
+                let a1 = sp - s1 - a0;
+                let a2 = s2 - sp;
+                let a3 = s1;
+
+                a0*mu*mu2 + a1*mu2 + a2*mu + a3
+            }
+
+            #[allow(unused_variables)]
+
             for frame in dst.iter_mut() {
                 let pos = buf.position as usize + buf.base_pos;
                 // -1..1
                 let s1 = (buf.sample.data[pos] as f32 - 128.0) / 128.0;
                 let s2 = (buf.sample.data[clamp(pos + 1, buf.base_pos + buf.len - 1)] as f32 - 128.0) / 128.0;
+                let s3 = (buf.sample.data[clamp(pos + 2, buf.base_pos + buf.len - 1)] as f32 - 128.0) / 128.0;
+                let s4 = (buf.sample.data[pos.saturating_sub(1)] as f32 - 128.0) / 128.0;
 
                 use std::f32::consts::PI;
 
@@ -214,7 +233,9 @@ fn mix(dst: &mut [u16], dst_fmt: WavFormat, srcs: &mut [RenderBuffer]) {
 
                 //let s = s1; // No interp
                 //let s = s1 + (s2 - s1) * r1; // Linear interp
-                let s = s1 * (1.0 - r2) + s2 * r2;
+                //let s = s1 * (1.0 - r2) + s2 * r2; // Cosine interp
+                let s = cubic_interp(s1, s2, s4, s3, r1); // Cubic interp
+                // Ideally we want sinc/lanczos interpolation, since that's what DirectSound appears to use.
 
                 // -128..128
                 let sl = s * pan_l * vol * 128.0;
