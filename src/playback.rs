@@ -207,8 +207,14 @@ fn mix(dst: &mut [u16], dst_fmt: WavFormat, srcs: &mut [RenderBuffer]) {
                 let s1 = (buf.sample.data[pos] as f32 - 128.0) / 128.0;
                 let s2 = (buf.sample.data[clamp(pos + 1, buf.base_pos + buf.len - 1)] as f32 - 128.0) / 128.0;
 
-                //let s = s1;
-                let s = s1 + (s2 - s1) * buf.position.fract() as f32;
+                use std::f32::consts::PI;
+
+                let r1 = buf.position.fract() as f32;
+                let r2 = (1.0 - f32::cos(r1 * PI)) / 2.0;
+
+                //let s = s1; // No interp
+                //let s = s1 + (s2 - s1) * r1; // Linear interp
+                let s = s1 * (1.0 - r2) + s2 * r2;
 
                 // -128..128
                 let sl = s * pan_l * vol * 128.0;
