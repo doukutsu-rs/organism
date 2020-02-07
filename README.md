@@ -8,7 +8,7 @@ Right now, the code works, and is roughly on par with [in\_org] in terms of soun
 However, the code is pretty messy and requires a lot of refactoring, as well as some tweaks to mixing.\
 By no means is this a finished product yet!
 
-To use it, run `cargo run -- <organya file> | aplay -q -fcd -fU8`.
+To use it, run `cargo run -- <organya file> | aplay -q -traw -fcd -fU8`.
 
 ## Prior Art
 
