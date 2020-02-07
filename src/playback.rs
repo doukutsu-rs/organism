@@ -190,11 +190,11 @@ fn mix(dst: &mut [u16], dst_fmt: WavFormat, srcs: &mut [RenderBuffer]) {
                 };
 
             for frame in dst.iter_mut() {
-                // 0..1
-                let s = buf.sample.data[buf.position as usize] as f32 / 255.0;
+                // -1..1
+                let s1 = (buf.sample.data[buf.position as usize] as f32 - 128.0) / 128.0;
+                let s2 = (buf.sample.data[(buf.position as usize + 1) % buf.sample.data.len()] as f32 - 128.0) / 128.0;
 
-                // -0.5..0.5
-                let s = s - 0.5;
+                let s = s1 + (s2 - s1) * buf.position.fract() as f32;
 
                 // -128..128
                 let sl = s * pan_l * vol;
