@@ -22,7 +22,11 @@ fn main() -> io::Result<()> {
 
     let mut playback = PlaybackEngine::new(org, bnk);
 
+    let mut time = std::time::Duration::new(0, 0);
+
     loop {
+        eprint!("\rPlaying {:02}:{:02}", time.as_secs() / 60, time.as_secs() % 60);
+
         let mut buf = vec![0x8080; 44100];
 
         playback.render_to(&mut buf);
@@ -30,6 +34,8 @@ fn main() -> io::Result<()> {
         for frame in &buf {
             io::stdout().write_all(&frame.to_be_bytes()).unwrap();
         }
+
+        time += std::time::Duration::from_secs(1);
     }
 
     //Ok(())
