@@ -33,7 +33,7 @@ impl PlaybackEngine {
 
             *buf =
                 MaybeUninit::new(
-                    RenderBuffer::new(
+                    RenderBuffer::new_organya(
                         WavSample { format, data: wave }
                     )
                 );
@@ -86,6 +86,8 @@ impl PlaybackEngine {
                     self.lengths[i] = note.len;
                     self.track_buffers[i].playing = true;
                     self.track_buffers[i].looping = true;
+                    let oct = note.key / 12;
+                    self.track_buffers[i].organya_select_octave(oct as usize);
                 }
 
                 if note.vol != 255 {
@@ -104,6 +106,8 @@ impl PlaybackEngine {
                 // https://github.com/shbow/organya/blob/master/source/OrgPlay.cpp#L36-L37
                 // https://github.com/shbow/organya/blob/master/source/Sound.cpp#L364
                 // https://docs.microsoft.com/en-us/previous-versions/windows/desktop/mt708933%28v%3dvs.85%29
+                // in OrgMaker, this actually causes the buffers to temporarily play over each other.
+                // since we only have one buffer per instrument, we can't do this.
                 self.track_buffers[i].looping = false;
             }
 
@@ -189,25 +193,32 @@ fn mix(dst: &mut [u16], dst_fmt: WavFormat, srcs: &mut [RenderBuffer]) {
                     _ => unsafe { std::hint::unreachable_unchecked() }
                 };
 
-            for frame in dst.iter_mut() {
-                // -1..1
-                let s1 = (buf.sample.data[buf.position as usize] as f32 - 128.0) / 128.0;
-                let s2 = (buf.sample.data[(buf.position as usize + 1) % buf.sample.data.len()] as f32 - 128.0) / 128.0;
+            fn clamp<T: Ord>(v: T, limit: T) -> T {
+                if v > limit {
+                    limit
+                } else {
+                    v
+                }
+            }
 
+            for frame in dst.iter_mut() {
+                let pos = buf.position as usize + buf.base_pos;
+                // -1..1
+                let s1 = (buf.sample.data[pos] as f32 - 128.0) / 128.0;
+                let s2 = (buf.sample.data[clamp(pos + 1, buf.base_pos + buf.len - 1)] as f32 - 128.0) / 128.0;
+
+                //let s = s1;
                 let s = s1 + (s2 - s1) * buf.position.fract() as f32;
 
                 // -128..128
-                let sl = s * pan_l * vol;
-                let sr = s * pan_r * vol;
-
-                let sl = (sl + 0.5) * 255.0;
-                let sr = (sr + 0.5) * 255.0;
+                let sl = s * pan_l * vol * 128.0;
+                let sr = s * pan_r * vol * 128.0;
 
                 buf.position += advance;
 
-                if buf.position as usize >= buf.sample.data.len() {
+                if buf.position as usize >= buf.len {
                     if buf.looping {
-                        buf.position %= buf.sample.data.len() as f64;
+                        buf.position %= buf.len as f64;
                     } else {
                         buf.position = 0.0;
                         buf.playing = false;
@@ -219,13 +230,10 @@ fn mix(dst: &mut [u16], dst_fmt: WavFormat, srcs: &mut [RenderBuffer]) {
                 // -128..127
                 let xl = (l ^ 128) as i8;
                 let xr = (r ^ 128) as i8;
-                // -128..127
-                let wl = ((sl) as u8 ^ 128) as i8;
-                let wr = ((sr) as u8 ^ 128) as i8;
 
                 // 0..255
-                l = xl.saturating_add(wl) as u8 ^ 128;
-                r = xr.saturating_add(wr) as u8 ^ 128;
+                l = xl.saturating_add(sl as i8) as u8 ^ 128;
+                r = xr.saturating_add(sr as i8) as u8 ^ 128;
 
                 *frame = u16::from_be_bytes([l, r]);
             }
@@ -245,6 +253,8 @@ pub struct RenderBuffer {
     pub sample: WavSample,
     pub playing: bool,
     pub looping: bool,
+    pub base_pos: usize,
+    pub len: usize,
 }
 
 impl RenderBuffer {
@@ -254,10 +264,45 @@ impl RenderBuffer {
             frequency: sample.format.sample_rate,
             volume: 0,
             pan: 0,
+            len: sample.data.len(),
             sample,
             playing: false,
             looping: false,
+            base_pos: 0,
         }
+    }
+
+    pub fn new_organya(mut sample: WavSample) -> RenderBuffer {
+        let wave = sample.data.clone();
+        sample.data.clear();
+
+        for size in &[256_usize,256,128,128,64,32,16,8] {
+            let step = 256 / size;
+            let mut acc = 0;
+
+            for _ in 0..*size {
+                sample.data.push(wave[acc]);
+                acc += step;
+
+                if acc >= 256 {
+                    acc = 0;
+                }
+            }
+        }
+
+        RenderBuffer::new(sample)
+    }
+
+    #[inline]
+    pub fn organya_select_octave(&mut self, octave: usize) {
+        const OFFS: &[usize] = &[0x000, 0x100,
+                                 0x200, 0x280,
+                                 0x300, 0x340,
+                                 0x360, 0x370];
+        const LENS: &[usize] = &[256_usize,256,128,128,64,32,16,8];
+        self.base_pos = OFFS[octave];
+        self.len = LENS[octave];
+        self.position %= self.len as f64;
     }
 
     #[inline]

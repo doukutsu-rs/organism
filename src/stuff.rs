@@ -14,10 +14,9 @@ pub fn org_key_to_freq(key: u8, a: i16) -> i32 {
     let (oct, pitch) = org_key_to_oct_pitch(key);
 
     let freq = FRQ_TBL[pitch as usize] as f32;
-    let _oct  = OCT_TBL[oct as usize];
+    let oct  = OCT_TBL[oct as usize] as f32;
 
-    // wave_size
-    ((freq * 256.0 * f32::powi(2.0, oct as i32 - 3)) as i32) + (1000 - a as i32)
+    (freq * oct) as i32 + (1000 - a as i32)
 }
 
 pub fn org_key_to_drum_freq(key: u8) -> i32  {
