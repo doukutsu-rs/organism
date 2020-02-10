@@ -13,7 +13,7 @@ pub struct PlaybackEngine {
     play_pos: i32,
     frames_this_tick: usize,
     frames_per_tick: usize,
-    loops: usize,
+    pub loops: usize,
 }
 
 impl PlaybackEngine {

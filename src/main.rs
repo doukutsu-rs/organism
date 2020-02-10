@@ -16,7 +16,8 @@ const BANK_DATA: &[u8] = include_bytes!("../assets/samples/Samples.bnk");
 
 fn main() -> io::Result<()> {
     let args = env::args().skip(1).collect::<Vec<_>>();
-    let output_wav = args.get(1).map_or(false, |x| x == "wav");
+    let output_wav = args.get(2).map_or(false, |x| x == "wav");
+    let loops = args.get(1).map_or(1, |x| x.parse().unwrap_or(1));
 
     let file  = File::open(&args[0])?;
     let f     = BufReader::new(file);
@@ -25,7 +26,7 @@ fn main() -> io::Result<()> {
     let bnk = bnk::SoundBank::load_from(BANK_DATA)?;
 
     let mut playback = PlaybackEngine::new(org, bnk);
-
+    playback.loops = loops;
     let mut time = std::time::Duration::new(0, 0);
 
     if output_wav {
@@ -49,6 +50,8 @@ fn main() -> io::Result<()> {
             break;
         }
     }
+
+    eprintln!();
 
     Ok(())
 }
