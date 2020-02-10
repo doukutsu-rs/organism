@@ -178,7 +178,7 @@ impl PlaybackEngine {
                     self.play_pos = self.song.time.loop_range.start;
 
                     if self.loops == 0 {
-                        return i;
+                        return i + 1;
                     }
 
                     self.loops -= 1;
