@@ -4,11 +4,33 @@ Organism is an [Organya] to wave audio conversion program.\
 It is written in Rust, and aims to be fast, easy to use,
 and produce [highly accurate](#accuracy) conversions.
 
-Right now, the code works, and is roughly on par with [in\_org] in terms of sound quality ([demo](https://www.youtube.com/watch?v=j_btVvNkWnM)).\
-However, the code is pretty messy and requires a lot of refactoring, as well as some tweaks to mixing.\
-By no means is this a finished product yet!
+Right now, the program works, but the interface is incredibly limited. See [usage](#usage) for more information.
 
-To use it, run `cargo run -- <organya file> | aplay -q -traw -fcd -fU8`.
+If you wanna hear how it sounds, you can find a demo [here](https://www.youtube.com/watch?v=5VxJYq-yoa0).
+
+## Installation
+
+```sh
+git clone https://gitdab.com/LunarLambda/organism.git
+cd organism
+cargo install --path .
+```
+
+## Usage
+
+After installing, you can render Organya files like so:
+
+```sh
+organism organya_file "wav" > output_file
+```
+
+If you omit the second argument (which must be `wav`), then no wav header will be written.
+
+Alternatively, you can run organism without installing it:
+
+```sh
+cargo run -q -- organya_file "wav" > output_file
+```
 
 ## Prior Art
 

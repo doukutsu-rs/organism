@@ -5,14 +5,18 @@ mod stuff;
 mod wav;
 
 use crate::playback::PlaybackEngine;
+
 use std::env;
 use std::fs::File;
 use std::io::{self, BufReader, Write};
+
+use byteorder::{LE, WriteBytesExt};
 
 const BANK_DATA: &[u8] = include_bytes!("../assets/samples/Samples.bnk");
 
 fn main() -> io::Result<()> {
     let args = env::args().skip(1).collect::<Vec<_>>();
+    let output_wav = args.get(1).map_or(false, |x| x == "wav");
 
     let file  = File::open(&args[0])?;
     let f     = BufReader::new(file);
@@ -24,21 +28,95 @@ fn main() -> io::Result<()> {
 
     let mut time = std::time::Duration::new(0, 0);
 
+    if output_wav {
+        print_wav_header(playback.get_total_samples())?;
+    }
+
     loop {
-        eprint!("\rPlaying {:02}:{:02}", time.as_secs() / 60, time.as_secs() % 60);
+        eprint!("\rRendering {:02}:{:02}", time.as_secs() / 60, time.as_secs() % 60);
 
         let mut buf = vec![0x8080; 44100];
 
-        playback.render_to(&mut buf);
+        let frames = playback.render_to(&mut buf);
 
-        for frame in &buf {
+        for frame in &buf[..frames] {
             io::stdout().write_all(&frame.to_be_bytes()).unwrap();
         }
 
         time += std::time::Duration::from_secs(1);
+
+        if frames < buf.len() {
+            break;
+        }
     }
 
-    //Ok(())
+    Ok(())
+}
+
+fn print_wav_header(samples: u32) -> io::Result<()> {
+    let data_size = 2 * samples;
+    let riff_size = 36 + data_size;
+
+    let format = WAVEFORMATEX::new(2, 44100, 8);
+
+    let stdout = io::stdout();
+    let mut out = stdout.lock();
+
+    out.write_all(b"RIFF")?;
+    out.write_u32::<LE>(riff_size)?;
+    out.write_all(b"WAVE")?;
+    out.write_all(&mut format.to_bytes())?;
+    out.write_all(b"data")?;
+    out.write_u32::<LE>(data_size)?;
+
+    Ok(())
+}
+
+#[allow(non_snake_case)]
+#[repr(C)]
+struct WAVEFORMATEX {
+    // Must be 1
+    wFormatTag: u16,
+    // Must be 2
+    nChannels: u16,
+    // Must be 44100
+    nSamplesPerSec: u32,
+    // Must be 44100 * nBlockAlign
+    nAvgBytesPerSec: u32,
+    // Must be nChannels * wBitsPerSample / 8
+    nBlockAlign: u16,
+    // Must be 8
+    wBitsPerSample: u16,
+}
+
+#[allow(non_snake_case)]
+impl WAVEFORMATEX {
+    const fn new(nChannels: u16, nSamplesPerSec: u32, wBitsPerSample: u16) -> Self {
+        let nBlockAlign = nChannels * wBitsPerSample / 8;
+        let nAvgBytesPerSec = nSamplesPerSec * nBlockAlign as u32;
+
+        WAVEFORMATEX {
+            wFormatTag: 1,
+            nChannels,
+            nSamplesPerSec,
+            nAvgBytesPerSec,
+            nBlockAlign,
+            wBitsPerSample
+        }
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(24);
+        out.write_all(b"fmt ").unwrap();
+        out.write_u32::<LE>(16).unwrap();
+        out.write_u16::<LE>(self.wFormatTag).unwrap();
+        out.write_u16::<LE>(self.nChannels).unwrap();
+        out.write_u32::<LE>(self.nSamplesPerSec).unwrap();
+        out.write_u32::<LE>(self.nAvgBytesPerSec).unwrap();
+        out.write_u16::<LE>(self.nBlockAlign).unwrap();
+        out.write_u16::<LE>(self.wBitsPerSample).unwrap();
+        out
+    }
 }
 
 /*

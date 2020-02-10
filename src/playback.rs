@@ -13,6 +13,7 @@ pub struct PlaybackEngine {
     play_pos: i32,
     frames_this_tick: usize,
     frames_per_tick: usize,
+    loops: usize,
 }
 
 impl PlaybackEngine {
@@ -63,12 +64,21 @@ impl PlaybackEngine {
             },
             frames_this_tick: 0,
             frames_per_tick,
+            loops: 1
         }
     }
 
     #[allow(unused)]
     pub fn set_position(&mut self, position: i32) {
         self.play_pos = position;
+    }
+
+    pub fn get_total_samples(&self) -> u32 {
+        let ticks_intro = self.song.time.loop_range.start;
+        let ticks_loop = self.song.time.loop_range.end - self.song.time.loop_range.start;
+        let ticks_total = ticks_intro + ticks_loop + (ticks_loop * self.loops as i32);
+
+        self.frames_per_tick as u32 * ticks_total as u32
     }
 
     fn update_play_state(&mut self) {
@@ -151,8 +161,8 @@ impl PlaybackEngine {
             .for_each(|(i, x)| x.playing = x.playing && mute_mask[i]);
     }
 
-    pub fn render_to(&mut self, buf: &mut [u16]) {
-        for frame in buf {
+    pub fn render_to(&mut self, buf: &mut [u16]) -> usize {
+        for (i, frame) in buf.iter_mut().enumerate() {
             if self.frames_this_tick == 0 {
                 self.update_play_state()
             }
@@ -166,11 +176,19 @@ impl PlaybackEngine {
 
                 if self.play_pos == self.song.time.loop_range.end {
                     self.play_pos = self.song.time.loop_range.start;
+
+                    if self.loops == 0 {
+                        return i;
+                    }
+
+                    self.loops -= 1;
                 }
 
                 self.frames_this_tick = 0;
             }
         }
+
+        buf.len()
     }
 }
 
