@@ -6,4 +6,5 @@
 !/assets/samples/mkbank
 *.raw
 *.wav
+*.flac
 NOTES*
