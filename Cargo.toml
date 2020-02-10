@@ -1,6 +1,6 @@
 [package]
 name = "organism"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Luna Catkins <lunarlambda@gmail.com>"]
 edition = "2018"
 description = "A high-accuracy Organya to WAV conversion tool"
