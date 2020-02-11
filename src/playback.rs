@@ -115,7 +115,7 @@ impl PlaybackEngine {
                     self.track_buffers[j].playing = true;
                     self.track_buffers[j].looping = true;
                     let oct = note.key / 12;
-                    self.track_buffers[j].organya_select_octave(oct as usize);
+                    self.track_buffers[j].organya_select_octave(oct as usize, self.song.tracks[i].inst.pipi != 0);
                 }
 
                 if note.vol != 255 {
@@ -274,8 +274,11 @@ fn mix(dst: &mut [u16], dst_fmt: WavFormat, srcs: &mut [RenderBuffer]) {
                 buf.position += advance;
 
                 if buf.position as usize >= buf.len {
-                    if buf.looping {
+                    if buf.looping && buf.nloops != 1 {
                         buf.position %= buf.len as f64;
+                        if buf.nloops != -1 {
+                            buf.nloops -= 1;
+                        }
                     } else {
                         buf.position = 0.0;
                         buf.playing = false;
@@ -313,6 +316,8 @@ pub struct RenderBuffer {
     pub looping: bool,
     pub base_pos: usize,
     pub len: usize,
+    // -1 = infinite
+    pub nloops: i32,
 }
 
 impl RenderBuffer {
@@ -327,6 +332,7 @@ impl RenderBuffer {
             playing: false,
             looping: false,
             base_pos: 0,
+            nloops: -1
         }
     }
 
@@ -352,7 +358,7 @@ impl RenderBuffer {
     }
 
     #[inline]
-    pub fn organya_select_octave(&mut self, octave: usize) {
+    pub fn organya_select_octave(&mut self, octave: usize, pipi: bool) {
         const OFFS: &[usize] = &[0x000, 0x100,
                                  0x200, 0x280,
                                  0x300, 0x340,
@@ -361,6 +367,9 @@ impl RenderBuffer {
         self.base_pos = OFFS[octave];
         self.len = LENS[octave];
         self.position %= self.len as f64;
+        if pipi {
+            self.nloops = ((octave+1) * 4) as i32;
+        }
     }
 
     #[inline]
