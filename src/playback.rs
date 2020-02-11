@@ -8,7 +8,8 @@ use std::mem::MaybeUninit;
 pub struct PlaybackEngine {
     song: Organya,
     lengths: [u8; 8],
-    track_buffers: [RenderBuffer; 16],
+    swaps: [usize; 8],
+    track_buffers: [RenderBuffer; 24],
     output_format: WavFormat,
     play_pos: i32,
     frames_this_tick: usize,
@@ -19,28 +20,33 @@ pub struct PlaybackEngine {
 impl PlaybackEngine {
     pub fn new(song: Organya, samples: SoundBank) -> Self {
 
-        let mut buffers: [MaybeUninit<RenderBuffer>; 16] = unsafe {
+        //  0..08: Wave Tracks
+        //  8..16: Back Wave Tracks
+        // 16..24: Drum Tracks
+        let mut buffers: [MaybeUninit<RenderBuffer>; 24] = unsafe {
             MaybeUninit::uninit().assume_init()
         };
 
-        for (inst, buf) in song.tracks[..8].iter().zip(buffers[..8].iter_mut()) {
-            // FIXME: This fucking naming oh my god
-            let wave = samples.get_wave(inst.inst.inst as usize)
-                              .iter()
-                              .map(|&x| x ^ 128) // WAVE100 is signed 8-bit, but we expect unsigned. Flipping the top bit might also work instead.
-                              .collect();
+        for i in 0..8 {
+            let sound_index = song.tracks[i].inst.inst as usize;
+
+            // WAVE100 uses 8-bit signed audio, but wav audio wants 8-bit unsigned.
+            // On 2s complement system, we can simply flip the top bit
+            // No need to cast to u8 here because the sound bank data is one big &[u8].
+            let sound = samples.get_wave(sound_index)
+                               .iter()
+                               .map(|&x| x ^ 128)
+                               .collect();
 
             let format = WavFormat { channels: 1, sample_rate: 22050, bit_depth: 8 };
 
-            *buf =
-                MaybeUninit::new(
-                    RenderBuffer::new_organya(
-                        WavSample { format, data: wave }
-                    )
-                );
+            let rbuf = RenderBuffer::new_organya(WavSample { format, data: sound });
+
+            buffers[i]   = MaybeUninit::new(rbuf.clone());
+            buffers[i+8] = MaybeUninit::new(rbuf);
         }
 
-        for (inst, buf) in song.tracks[8..].iter().zip(buffers[8..].iter_mut()) {
+        for (inst, buf) in song.tracks[8..].iter().zip(buffers[16..].iter_mut()) {
             *buf =
                 MaybeUninit::new(
                     RenderBuffer::new(
@@ -55,6 +61,7 @@ impl PlaybackEngine {
         PlaybackEngine {
             song,
             lengths: [0; 8],
+            swaps: [0; 8],
             track_buffers: unsafe { std::mem::transmute(buffers) },
             play_pos: 0,
             output_format: WavFormat {
@@ -83,6 +90,7 @@ impl PlaybackEngine {
 
     fn update_play_state(&mut self) {
         for i in 0..8 {
+            let mut j = i + self.swaps[i];
             // start a new note
             if let Some(note) =
                 self.song.tracks[i].notes.iter().find(|x| x.pos == self.play_pos) {
@@ -90,24 +98,34 @@ impl PlaybackEngine {
                 // FIXME: Add constants for dummy values
                 // NOTE: No length dummy value. NaN (Not a Note) is represented by key == 255. Length is ignored in that case, but can be zero or one.
                 if note.key != 255 {
+                    // Already playing
+                    if self.track_buffers[j].playing {
+                        // Unless we have overlapping notes, this should hold true.
+                        assert!(self.lengths[i] == 0);
+                        self.track_buffers[j].looping = false;
+                        self.swaps[i] +=  8;
+                        self.swaps[i] %= 16;
+                        j = i + self.swaps[i];
+                    }
+
                     let freq = org_key_to_freq(note.key, self.song.tracks[i].inst.freq as i16);
-                    self.track_buffers[i].set_frequency(freq as u32);
+                    self.track_buffers[j].set_frequency(freq as u32);
 
                     self.lengths[i] = note.len;
-                    self.track_buffers[i].playing = true;
-                    self.track_buffers[i].looping = true;
+                    self.track_buffers[j].playing = true;
+                    self.track_buffers[j].looping = true;
                     let oct = note.key / 12;
-                    self.track_buffers[i].organya_select_octave(oct as usize);
+                    self.track_buffers[j].organya_select_octave(oct as usize);
                 }
 
                 if note.vol != 255 {
                     let vol = org_vol_to_vol(note.vol);
-                    self.track_buffers[i].set_volume(vol);
+                    self.track_buffers[j].set_volume(vol);
                 }
 
                 if note.pan != 255 {
                     let pan = org_pan_to_pan(note.pan);
-                    self.track_buffers[i].set_pan(pan);
+                    self.track_buffers[j].set_pan(pan);
                 }
             }
 
@@ -118,13 +136,15 @@ impl PlaybackEngine {
                 // https://docs.microsoft.com/en-us/previous-versions/windows/desktop/mt708933%28v%3dvs.85%29
                 // in OrgMaker, this actually causes the buffers to temporarily play over each other.
                 // since we only have one buffer per instrument, we can't do this.
-                self.track_buffers[i].looping = false;
+                self.track_buffers[j].looping = false;
             }
 
             self.lengths[i] = self.lengths[i].saturating_sub(1);
         }
 
         for i in 8..16 {
+            let j = i + 8;
+
             let notes = &self.song.tracks[i].notes;
 
             // start a new note
@@ -135,30 +155,22 @@ impl PlaybackEngine {
                 // FIXME: Add constants for dummy values
                 if note.key != 255 {
                     let freq = org_key_to_drum_freq(note.key);
-                    self.track_buffers[i].set_frequency(freq as u32);
-                    self.track_buffers[i].set_position(0);
-                    self.track_buffers[i].playing = true;
+                    self.track_buffers[j].set_frequency(freq as u32);
+                    self.track_buffers[j].set_position(0);
+                    self.track_buffers[j].playing = true;
                 }
 
                 if note.vol != 255 {
                     let vol = org_vol_to_vol(note.vol);
-                    self.track_buffers[i].set_volume(vol);
+                    self.track_buffers[j].set_volume(vol);
                 }
 
                 if note.pan != 255 {
                     let pan = org_pan_to_pan(note.pan);
-                    self.track_buffers[i].set_pan(pan);
+                    self.track_buffers[j].set_pan(pan);
                 }
             }
         }
-
-        let mut mute_mask = [true; 16];
-        mute_mask[9] = true;
-
-        self.track_buffers
-            .iter_mut()
-            .enumerate()
-            .for_each(|(i, x)| x.playing = x.playing && mute_mask[i]);
     }
 
     pub fn render_to(&mut self, buf: &mut [u16]) -> usize {
@@ -290,6 +302,7 @@ pub fn centibel_to_scale(a: i32) -> f32 {
     f32::powf(10.0, a as f32 / 2000.0)
 }
 
+#[derive(Clone)]
 pub struct RenderBuffer {
     pub position: f64,
     pub frequency: u32,
