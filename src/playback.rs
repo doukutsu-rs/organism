@@ -9,7 +9,8 @@ pub struct PlaybackEngine {
     song: Organya,
     lengths: [u8; 8],
     swaps: [usize; 8],
-    track_buffers: [RenderBuffer; 24],
+    keys: [u8; 8],
+    track_buffers: [RenderBuffer; 136],
     output_format: WavFormat,
     play_pos: i32,
     frames_this_tick: usize,
@@ -20,13 +21,19 @@ pub struct PlaybackEngine {
 impl PlaybackEngine {
     pub fn new(song: Organya, samples: SoundBank) -> Self {
 
-        //  0..08: Wave Tracks
-        //  8..16: Back Wave Tracks
-        // 16..24: Drum Tracks
-        let mut buffers: [MaybeUninit<RenderBuffer>; 24] = unsafe {
+        // Octave 0 Track 0 Swap 0
+        // Octave 0 Track 1 Swap 0
+        // ...
+        // Octave 1 Track 0 Swap 0
+        // ...
+        // Octave 0 Track 0 Swap 1
+        // octave * 8 + track + swap
+        // 128..136: Drum Tracks
+        let mut buffers: [MaybeUninit<RenderBuffer>; 136] = unsafe {
             MaybeUninit::uninit().assume_init()
         };
 
+        // track
         for i in 0..8 {
             let sound_index = song.tracks[i].inst.inst as usize;
 
@@ -42,11 +49,16 @@ impl PlaybackEngine {
 
             let rbuf = RenderBuffer::new_organya(WavSample { format, data: sound });
 
-            buffers[i]   = MaybeUninit::new(rbuf.clone());
-            buffers[i+8] = MaybeUninit::new(rbuf);
+            // octave
+            for j in 0..8 {
+                // swap
+                for &k in &[0, 64] {
+                    buffers[i + (j * 8) + k] = MaybeUninit::new(rbuf.clone());
+                }
+            }
         }
 
-        for (inst, buf) in song.tracks[8..].iter().zip(buffers[16..].iter_mut()) {
+        for (inst, buf) in song.tracks[8..].iter().zip(buffers[128..].iter_mut()) {
             *buf =
                 MaybeUninit::new(
                     RenderBuffer::new(
@@ -62,6 +74,7 @@ impl PlaybackEngine {
             song,
             lengths: [0; 8],
             swaps: [0; 8],
+            keys: [255; 8],
             track_buffers: unsafe { std::mem::transmute(buffers) },
             play_pos: 0,
             output_format: WavFormat {
@@ -89,61 +102,104 @@ impl PlaybackEngine {
     }
 
     fn update_play_state(&mut self) {
-        for i in 0..8 {
-            let mut j = i + self.swaps[i];
-            // start a new note
-            if let Some(note) =
-                self.song.tracks[i].notes.iter().find(|x| x.pos == self.play_pos) {
+        for track in 0..8 {
 
-                // FIXME: Add constants for dummy values
-                // NOTE: No length dummy value. NaN (Not a Note) is represented by key == 255. Length is ignored in that case, but can be zero or one.
+            if let Some(note) =
+                self.song.tracks[track].notes.iter().find(|x| x.pos == self.play_pos) {
+                // New note
+                //eprintln!("{:?}", &self.keys);
                 if note.key != 255 {
-                    // Already playing
-                    if self.track_buffers[j].playing {
-                        // Unless we have overlapping notes, this should hold true.
-                        assert!(self.lengths[i] == 0);
-                        self.track_buffers[j].looping = false;
-                        self.swaps[i] +=  8;
-                        self.swaps[i] %= 16;
-                        j = i + self.swaps[i];
+                    if self.keys[track] == 255 { // New
+                        let octave = (note.key / 12) * 8;
+                        let j = octave as usize + track + self.swaps[track];
+                        for k in 0..16 {
+                            let swap = if k >=8 {64} else {0};
+                            let key = note.key % 12;
+                            let p_oct = k % 8;
+
+                            let freq = org_key_to_freq(key + p_oct*12, self.song.tracks[track].inst.freq as i16);
+
+                            let l = p_oct as usize * 8 + track + swap;
+                            self.track_buffers[l].set_frequency(freq as u32);
+                            self.track_buffers[l].organya_select_octave(p_oct as usize, self.song.tracks[track].inst.pipi != 0);
+                        }
+                        self.track_buffers[j].looping = true;
+                        self.track_buffers[j].playing = true;
+                        // last playing key
+                        self.keys[track] = note.key;
+                    } else if self.keys[track] == note.key { // Same
+                        //assert!(self.lengths[track] == 0);
+                        let octave = (self.keys[track] / 12) * 8;
+                        let j = octave as usize + track + self.swaps[track];
+                        if self.song.tracks[track].inst.pipi == 0 {
+                            self.track_buffers[j].looping = false;
+                        }
+                        self.swaps[track] +=  64;
+                        self.swaps[track] %= 128;
+                        let j = octave as usize + track + self.swaps[track];
+                        self.track_buffers[j].organya_select_octave(note.key as usize / 12, self.song.tracks[track].inst.pipi != 0);
+                        self.track_buffers[j].looping = true;
+                        self.track_buffers[j].playing = true;
+                    } else { // change
+                        let octave = (self.keys[track] / 12) * 8;
+                        let j = octave as usize + track + self.swaps[track];
+                        if self.song.tracks[track].inst.pipi == 0 {
+                            self.track_buffers[j].looping = false;
+                        }
+                        self.swaps[track] +=  64;
+                        self.swaps[track] %= 128;
+                        let octave = (note.key / 12) * 8;
+                        let j = octave as usize + track + self.swaps[track];
+                        for k in 0..16 {
+                            let swap = if k >=8 {64} else {0};
+                            let key = note.key % 12;
+                            let p_oct = k % 8;
+
+                            let freq = org_key_to_freq(key + p_oct*12, self.song.tracks[track].inst.freq as i16);
+                            let l = p_oct as usize * 8 + track + swap;
+                            self.track_buffers[l].set_frequency(freq as u32);
+                            self.track_buffers[l].organya_select_octave(p_oct as usize, self.song.tracks[track].inst.pipi != 0);
+                        }
+                        self.track_buffers[j].looping = true;
+                        self.track_buffers[j].playing = true;
+                        self.keys[track] = note.key;
                     }
 
-                    let freq = org_key_to_freq(note.key, self.song.tracks[i].inst.freq as i16);
-                    self.track_buffers[j].set_frequency(freq as u32);
-
-                    self.lengths[i] = note.len;
-                    self.track_buffers[j].playing = true;
-                    self.track_buffers[j].looping = true;
-                    let oct = note.key / 12;
-                    self.track_buffers[j].organya_select_octave(oct as usize, self.song.tracks[i].inst.pipi != 0);
+                    self.lengths[track] = note.len;
                 }
 
-                if note.vol != 255 {
-                    let vol = org_vol_to_vol(note.vol);
-                    self.track_buffers[j].set_volume(vol);
-                }
+                if self.keys[track] != 255 {
+                    let octave = (self.keys[track] / 12) * 8;
+                    let j = octave as usize + track + self.swaps[track];
 
-                if note.pan != 255 {
-                    let pan = org_pan_to_pan(note.pan);
-                    self.track_buffers[j].set_pan(pan);
+                    if note.vol != 255 {
+                        let vol = org_vol_to_vol(note.vol);
+                        self.track_buffers[j].set_volume(vol);
+                    }
+
+                    if note.pan != 255 {
+                        let pan = org_pan_to_pan(note.pan);
+                        self.track_buffers[j].set_pan(pan);
+                    }
                 }
             }
 
-            if self.lengths[i] == 0 {
-                // OrgMaker calls Play on the soundbuffer, without the looping flag. So the sample should play to the end.
-                // https://github.com/shbow/organya/blob/master/source/OrgPlay.cpp#L36-L37
-                // https://github.com/shbow/organya/blob/master/source/Sound.cpp#L364
-                // https://docs.microsoft.com/en-us/previous-versions/windows/desktop/mt708933%28v%3dvs.85%29
-                // in OrgMaker, this actually causes the buffers to temporarily play over each other.
-                // since we only have one buffer per instrument, we can't do this.
-                self.track_buffers[j].looping = false;
+            if self.lengths[track] == 0 {
+                if self.keys[track] != 255 {
+                    let octave = (self.keys[track] / 12) * 8;
+                    let j = octave as usize + track + self.swaps[track];
+                    if self.song.tracks[track].inst.pipi == 0 {
+                        self.track_buffers[j].looping = false;
+                    }
+                    self.keys[track] = 255;
+                }
             }
 
-            self.lengths[i] = self.lengths[i].saturating_sub(1);
+            self.lengths[track] = self.lengths[track].saturating_sub(1);
         }
 
         for i in 8..16 {
-            let j = i + 8;
+            let j = i + 120;
 
             let notes = &self.song.tracks[i].notes;
 
@@ -217,10 +273,10 @@ fn mix(dst: &mut [u16], dst_fmt: WavFormat, srcs: &mut [RenderBuffer]) {
 
             let (pan_l, pan_r) =
                 match buf.pan.signum() {
-                    0 => (1.0, 1.0),
-                    1 => (centibel_to_scale(-buf.pan), 1.0),
+                     0 => (1.0, 1.0),
+                     1 => (centibel_to_scale(-buf.pan), 1.0),
                     -1 => (1.0, centibel_to_scale(buf.pan)),
-                    _ => unsafe { std::hint::unreachable_unchecked() }
+                     _ => unsafe { std::hint::unreachable_unchecked() }
                 };
 
             fn clamp<T: Ord>(v: T, limit: T) -> T {
@@ -367,7 +423,7 @@ impl RenderBuffer {
         self.base_pos = OFFS[octave];
         self.len = LENS[octave];
         self.position %= self.len as f64;
-        if pipi {
+        if pipi && !self.playing {
             self.nloops = ((octave+1) * 4) as i32;
         }
     }
