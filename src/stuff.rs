@@ -16,7 +16,7 @@ pub fn org_key_to_freq(key: u8, a: i16) -> i32 {
     let freq = FRQ_TBL[pitch as usize] as f32;
     let oct  = OCT_TBL[oct as usize] as f32;
 
-    (freq * oct) as i32 + (1000 - a as i32)
+    (freq * oct) as i32 + (a as i32 - 1000)
 }
 
 pub fn org_key_to_drum_freq(key: u8) -> i32  {
