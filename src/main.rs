@@ -9,6 +9,7 @@ use crate::playback::PlaybackEngine;
 use std::env;
 use std::fs::File;
 use std::io::{self, BufReader, Write};
+use std::time::{Duration, Instant};
 
 use byteorder::{LE, WriteBytesExt};
 
@@ -27,16 +28,25 @@ fn main() -> io::Result<()> {
 
     let mut playback = PlaybackEngine::new(org, bnk);
     playback.loops = loops;
-    let mut time = std::time::Duration::new(0, 0);
+    let mut time = Duration::new(0, 0);
 
     if output_wav {
         print_wav_header(playback.get_total_samples())?;
     }
 
-    loop {
-        eprint!("\rRendering {:02}:{:02}", time.as_secs() / 60, time.as_secs() % 60);
+    let total_frames = playback.get_total_samples();
+    let total_secs = total_frames / 44100;
+    let total_time = format!("{:02}:{:02}", total_secs / 60, total_secs % 60);
+    let mut frames_done = 0;
+    let now = Instant::now();
 
-        let mut buf = vec![0x8080; 44100];
+    loop {
+        let speed = time.as_secs_f64() / now.elapsed().as_secs_f64();
+
+        eprint!("\rRendering {:02}:{:02}/{} ({:5.2}x speed)",
+            time.as_secs() / 60, time.as_secs() % 60, total_time, speed);
+
+        let mut buf = vec![0x8080; 441];
 
         let frames = playback.render_to(&mut buf);
 
@@ -44,9 +54,11 @@ fn main() -> io::Result<()> {
             io::stdout().write_all(&frame.to_be_bytes()).unwrap();
         }
 
-        time += std::time::Duration::from_secs(1);
+        time += Duration::from_secs_f64(frames as f64 / 44100.0);
 
-        if frames < buf.len() {
+        frames_done += frames;
+
+        if frames_done == total_frames as usize {
             break;
         }
     }
