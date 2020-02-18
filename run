@@ -1,2 +1,2 @@
 #!/bin/sh
-cargo run -q -- "$1" "$2" wav
+cargo run --release -q -- "$1" "$2" wav
