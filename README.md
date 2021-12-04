@@ -86,12 +86,6 @@ Cave Story uses Pixel's own format, PixTone, which will require its own emulatio
 
 PixTone support may be added in the future.
 
-#### Fidelity
-
-Due to several oddities in Pixel's code, the melody instruments often produce a 'pop' sound at the start and end of notes.
-
-The details of this are fuzzy, so this is *not* emulated.
-
 ## Code References
 
 Alongside my own experimentation with existing tools, these projects have provided a lot of insight into how Organya works.
