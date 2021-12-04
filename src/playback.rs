@@ -316,23 +316,34 @@ fn mix(dst: &mut [u16], dst_fmt: WavFormat, srcs: &mut [RenderBuffer]) {
                 y.sin() / y
             }
 
-            fn lanczos(x: f32) -> f32
+            fn lanczos(x: f32, a: f32) -> f32
             {
-                if x.abs() >= 2.0
+                if x.abs() >= a
                 {
                     return 0.0;
                 }
 
-                sinc(x) * sinc(x / 2.0)
+                sinc(x) * sinc(x / a)
             }
 
             fn lanczos_interp(s1: f32, s2: f32, s3: f32, s4: f32, r: f32) -> f32
             {
                 // assuming floor(x) = 0
-                (s4 * lanczos(r - -1.0)) +
-                (s1 * lanczos(r)) +
-                (s2 * lanczos(r - 1.0)) +
-                (s3 * lanczos(r - 2.0))
+                (s4 * lanczos(r - -1.0, 2.0)) +
+                (s1 * lanczos(r, 2.0)) +
+                (s2 * lanczos(r - 1.0, 2.0)) +
+                (s3 * lanczos(r - 2.0, 2.0))
+            }
+
+            fn lanczos_interp6(s1: f32, s2: f32, s3: f32, s4: f32, s5: f32, s6: f32, r: f32) -> f32
+            {
+                // assuming floor(x) = 0
+                (s5 * lanczos(r - -2.0, 3.0)) +
+                (s4 * lanczos(r - -1.0, 3.0)) +
+                (s1 * lanczos(r, 3.0)) +
+                (s2 * lanczos(r - 1.0, 3.0)) +
+                (s3 * lanczos(r - 2.0, 3.0)) +
+                (s6 * lanczos(r - 3.0, 3.0))
             }
 
             #[allow(unused_variables)]
@@ -350,7 +361,11 @@ fn mix(dst: &mut [u16], dst_fmt: WavFormat, srcs: &mut [RenderBuffer]) {
 
                 // x - 1
                 let s4 = (buf.sample.data[pos.saturating_sub(1)] as f32 - 128.0) / 128.0;
+                // x - 2
+                let s5 = (buf.sample.data[pos.saturating_sub(2)] as f32 - 128.0) / 128.0;
 
+                // x + 3
+                let s6 = (buf.sample.data[clamp(pos + 3, buf.base_pos + buf.len - 1)] as f32 - 128.0) / 128.0;
                 use std::f32::consts::PI;
 
                 let r1 = buf.position.fract() as f32;
@@ -360,7 +375,8 @@ fn mix(dst: &mut [u16], dst_fmt: WavFormat, srcs: &mut [RenderBuffer]) {
                 //let s = s1 + (s2 - s1) * r1; // Linear interp
                 //let s = s1 * (1.0 - r2) + s2 * r2; // Cosine interp
                 //let s = cubic_interp(s1, s2, s4, s3, r1); // Cubic interp
-                let s = lanczos_interp(s1, s2, s3, s4, r1);
+                //let s = lanczos_interp(s1, s2, s3, s4, r1);
+                let s = lanczos_interp6(s1, s2, s3, s4, s5, s6, r1);
                 // Ideally we want sinc/lanczos interpolation, since that's what DirectSound appears to use.
 
                 // -128..128
