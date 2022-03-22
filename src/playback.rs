@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_imports)]
 use crate::bnk::SoundBank;
 use crate::org::Song as Organya;
 use crate::stuff::*;

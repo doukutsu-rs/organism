@@ -19,6 +19,7 @@ fn main() -> io::Result<()> {
     let args = env::args().skip(1).collect::<Vec<_>>();
     let output_wav = args.get(2).map_or(false, |x| x == "wav");
     let loops = args.get(1).map_or(1, |x| x.parse().unwrap_or(1));
+    let extra = args.get(3).map_or(0, |x| x.parse().unwrap_or(0));
 
     let file  = File::open(&args[0])?;
     let f     = BufReader::new(file);
@@ -34,7 +35,7 @@ fn main() -> io::Result<()> {
         print_wav_header(playback.get_total_samples())?;
     }
 
-    let total_frames = playback.get_total_samples();
+    let total_frames = playback.get_total_samples() + (extra * 44100);
     let total_secs = total_frames / 44100;
     let total_time = format!("{:02}:{:02}", total_secs / 60, total_secs % 60);
     let mut frames_done = 0;
