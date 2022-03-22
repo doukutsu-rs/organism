@@ -29,13 +29,14 @@ fn main() -> io::Result<()> {
 
     let mut playback = PlaybackEngine::new(org, bnk);
     playback.loops = loops;
+    playback.extra = extra;
     let mut time = Duration::new(0, 0);
 
     if output_wav {
-        print_wav_header(playback.get_total_samples() + (extra * 44100))?;
+        print_wav_header(playback.get_total_samples())?;
     }
 
-    let total_frames = playback.get_total_samples() + (extra * 44100);
+    let total_frames = playback.get_total_samples();
     let total_secs = total_frames / 44100;
     let total_time = format!("{:02}:{:02}", total_secs / 60, total_secs % 60);
     let mut frames_done = 0;

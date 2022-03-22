@@ -16,7 +16,9 @@ pub struct PlaybackEngine {
     play_pos: i32,
     frames_this_tick: usize,
     frames_per_tick: usize,
+    frames_done: u32,
     pub loops: usize,
+    pub extra: u32,
 }
 
 impl PlaybackEngine {
@@ -85,7 +87,9 @@ impl PlaybackEngine {
             },
             frames_this_tick: 0,
             frames_per_tick,
-            loops: 1
+            frames_done: 0,
+            loops: 1,
+            extra: 0,
         }
     }
 
@@ -99,7 +103,7 @@ impl PlaybackEngine {
         let ticks_loop = self.song.time.loop_range.end - self.song.time.loop_range.start;
         let ticks_total = ticks_intro + ticks_loop + (ticks_loop * self.loops as i32);
 
-        self.frames_per_tick as u32 * ticks_total as u32
+        self.frames_per_tick as u32 * ticks_total as u32 + (self.extra * self.output_format.sample_rate)
     }
 
     fn update_play_state(&mut self) {
@@ -238,6 +242,7 @@ impl PlaybackEngine {
 
             mix(std::slice::from_mut(frame), self.output_format, &mut self.track_buffers);
 
+            self.frames_done += 1;
             self.frames_this_tick += 1;
 
             if self.frames_this_tick == self.frames_per_tick {
@@ -246,14 +251,19 @@ impl PlaybackEngine {
                 if self.play_pos == self.song.time.loop_range.end {
                     self.play_pos = self.song.time.loop_range.start;
 
-                    if self.loops == 0 {
-                        return i + 1;
-                    }
-
-                    self.loops -= 1;
+                    // if self.loops == 0 {
+                    //     // return i + 1;
+                    // }
+                    // else {
+                    //     self.loops -= 1;
+                    // }
                 }
 
                 self.frames_this_tick = 0;
+            }
+
+            if self.frames_done == self.get_total_samples() {
+                return i + 1;
             }
         }
 
