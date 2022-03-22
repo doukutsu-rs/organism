@@ -8,6 +8,7 @@ use std::mem::MaybeUninit;
 
 pub struct PlaybackEngine {
     song: Organya,
+    mute: [bool; 16],
     lengths: [u8; 8],
     swaps: [usize; 8],
     keys: [u8; 8],
@@ -75,6 +76,7 @@ impl PlaybackEngine {
 
         PlaybackEngine {
             song,
+            mute: [false; 16],
             lengths: [0; 8],
             swaps: [0; 8],
             keys: [255; 8],
@@ -146,77 +148,50 @@ impl PlaybackEngine {
     }
 
     fn update_play_state(&mut self) {
+        // self.mute[0] = true;
+        // self.mute[1] = true;
+        // self.mute[2] = true;
+        // self.mute[3] = true;
+        // self.mute[4] = true;
+        // self.mute[5] = true;
+        // self.mute[6] = true;
+        // self.mute[7] = true;
+
+        // self.mute[8] = true;
+        // self.mute[9] = true;
+        // self.mute[10] = true;
+        // self.mute[11] = true;
+        // self.mute[12] = true;
+        // self.mute[13] = true;
+        // self.mute[14] = true;
+        // self.mute[15] = true;
+
         // For every wave track...
         for track in 0..8 {
+            if self.mute[track] { continue; }
 
             // Do we have a note for the current X pos?
             if let Some(&note) =
                 self.song.tracks[track].notes.iter().find(|x| x.pos == self.play_pos) {
+
                 // New note (Pitch of 255 is a dummy value for volume/pan adjustments)
                 if note.key != 255 {
-                    // Brand new note
-                    if !self.track_is_playing(track) {
-
-                        // last playing key
-                        self.track_start_playing(track, note.key);
-
-                        // What???
-                        //
-                        // 0..8 = octave
-                        // bit 3 = back buffers
-                        //
-                        // Why are we doing this?
-                        for k in 0..16 {
-                            let swap = if k >=8 {64} else {0};
-
-                            let key = note.key % 12;
-                            let p_oct = k % 8;
-
-                            // Adjust frequency
-                            let freq = org_key_to_freq(key + p_oct*12, self.song.tracks[track].inst.freq as i16);
-
-                            let l = p_oct as usize * 8 + track + swap;
-                            self.track_buffers[l].set_frequency(freq as u32);
-                            self.track_buffers[l].organya_select_octave(p_oct as usize, self.song.tracks[track].inst.pipi != 0);
-                        }
-
-                        self.track_play_note(track);
-                    }
-                    else if self.keys[track] == note.key { // Same key as before
-                        //assert!(self.lengths[track] == 0);
-
+                    if self.track_is_playing(track) {
                         self.track_kill_note(track);
 
                         self.swap_buffers_for_track(track);
-
-                        // Play back buffer
-                        let j = self.get_active_buffer_for_track(track);
-
-                        // Play
-                        self.track_buffers[j].organya_select_octave(note.key as usize / 12, self.song.tracks[track].inst.pipi != 0);
-                        self.track_play_note(track);
                     }
-                    else { // Key change without break
-                        self.track_kill_note(track);
 
-                        self.swap_buffers_for_track(track);
+                    // Set last playing key
+                    self.track_start_playing(track, note.key);
 
-                        self.track_start_playing(track, note.key);
+                    // Adjust frequency
+                    let l = self.get_active_buffer_for_track(track);
+                    let freq = org_key_to_freq(note.key, self.song.tracks[track].inst.freq as i16);
+                    self.track_buffers[l].set_frequency(freq as u32);
+                    self.track_buffers[l].organya_select_octave(note.key as usize/12, self.song.tracks[track].inst.pipi != 0);
 
-                        // Again we set the frequency on all octave buffers... why?
-                        for k in 0..16 {
-                            let swap = if k >=8 {64} else {0};
-                            let key = note.key % 12;
-                            let p_oct = k % 8;
-
-                            let freq = org_key_to_freq(key + p_oct*12, self.song.tracks[track].inst.freq as i16);
-                            let l = p_oct as usize * 8 + track + swap;
-                            self.track_buffers[l].set_frequency(freq as u32);
-                            self.track_buffers[l].organya_select_octave(p_oct as usize, self.song.tracks[track].inst.pipi != 0);
-                        }
-
-                        self.track_play_note(track);
-                    }
+                    self.track_play_note(track);
 
                     self.lengths[track] = note.len;
                 }
@@ -254,6 +229,8 @@ impl PlaybackEngine {
 
         // Drum notes
         for i in 8..16 {
+            if self.mute[i] { continue; }
+
             let j = i + 120;
 
             let notes = &self.song.tracks[i].notes;
