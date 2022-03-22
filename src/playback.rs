@@ -147,6 +147,11 @@ impl PlaybackEngine {
         self.track_buffers[j].looping = true;
     }
 
+    fn display_buffer(&self, buf: usize) -> String {
+        let buf_ns = buf & 63;
+        format!("Track {}, Octave {}, Buffer {}", buf_ns % 8, buf_ns / 8, buf >> 6)
+    }
+
     fn update_play_state(&mut self) {
         // self.mute[0] = true;
         // self.mute[1] = true;
@@ -179,19 +184,21 @@ impl PlaybackEngine {
                     if self.track_is_playing(track) {
                         self.track_kill_note(track);
 
+                        let freq = org_key_to_freq(note.key, self.song.tracks[track].inst.freq as i16);
+                        let l = self.get_active_buffer_for_track(track);
+                        self.track_buffers[l].set_frequency(freq as u32);
+
                         self.swap_buffers_for_track(track);
                     }
 
                     // Set last playing key
                     self.track_start_playing(track, note.key);
+                    self.track_play_note(track);
 
-                    // Adjust frequency
                     let l = self.get_active_buffer_for_track(track);
                     let freq = org_key_to_freq(note.key, self.song.tracks[track].inst.freq as i16);
                     self.track_buffers[l].set_frequency(freq as u32);
                     self.track_buffers[l].organya_select_octave(note.key as usize/12, self.song.tracks[track].inst.pipi != 0);
-
-                    self.track_play_note(track);
 
                     self.lengths[track] = note.len;
                 }
@@ -518,7 +525,8 @@ impl RenderBuffer {
         const LENS: &[usize] = &[256_usize,256,128,128,64,32,16,8];
         self.base_pos = OFFS[octave];
         self.len = LENS[octave];
-        self.position %= self.len as f64;
+        // What does this do??
+        //self.position %= self.len as f64;
         if pipi && !self.playing {
             self.nloops = ((octave+1) * 4) as i32;
         }
