@@ -32,7 +32,7 @@ fn main() -> io::Result<()> {
     let mut time = Duration::new(0, 0);
 
     if output_wav {
-        print_wav_header(playback.get_total_samples())?;
+        print_wav_header(playback.get_total_samples() + (extra * 44100))?;
     }
 
     let total_frames = playback.get_total_samples() + (extra * 44100);
@@ -47,12 +47,12 @@ fn main() -> io::Result<()> {
         eprint!("\rRendering {:02}:{:02}/{} ({:5.2}x speed)",
             time.as_secs() / 60, time.as_secs() % 60, total_time, speed);
 
-        let mut buf = vec![0x8080; 441];
+        let mut buf = vec![0x0; 441];
 
         let frames = playback.render_to(&mut buf);
 
         for frame in &buf[..frames] {
-            io::stdout().write_all(&frame.to_be_bytes()).unwrap();
+            io::stdout().write_all(&frame.to_le_bytes()).unwrap();
         }
 
         time += Duration::from_secs_f64(frames as f64 / 44100.0);
@@ -70,10 +70,10 @@ fn main() -> io::Result<()> {
 }
 
 fn print_wav_header(samples: u32) -> io::Result<()> {
-    let data_size = 2 * samples;
+    let data_size = 4 * samples;
     let riff_size = 36 + data_size;
 
-    let format = WAVEFORMATEX::new(2, 44100, 8);
+    let format = WAVEFORMATEX::new(2, 44100, 16);
 
     let stdout = io::stdout();
     let mut out = stdout.lock();
@@ -108,7 +108,7 @@ struct WAVEFORMATEX {
 #[allow(non_snake_case)]
 impl WAVEFORMATEX {
     const fn new(nChannels: u16, nSamplesPerSec: u32, wBitsPerSample: u16) -> Self {
-        let nBlockAlign = nChannels * wBitsPerSample / 8;
+        let nBlockAlign = nChannels * (wBitsPerSample / 8);
         let nAvgBytesPerSec = nSamplesPerSec * nBlockAlign as u32;
 
         WAVEFORMATEX {

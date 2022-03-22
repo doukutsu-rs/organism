@@ -230,7 +230,7 @@ impl PlaybackEngine {
         }
     }
 
-    pub fn render_to(&mut self, buf: &mut [u16]) -> usize {
+    pub fn render_to(&mut self, buf: &mut [u32]) -> usize {
         for (i, frame) in buf.iter_mut().enumerate() {
             if self.frames_this_tick == 0 {
                 self.update_play_state()
@@ -262,10 +262,10 @@ impl PlaybackEngine {
 }
 
 // TODO: Create a MixingBuffer or something...
-fn mix(dst: &mut [u16], dst_fmt: WavFormat, srcs: &mut [RenderBuffer]) {
+fn mix(dst: &mut [u32], dst_fmt: WavFormat, srcs: &mut [RenderBuffer]) {
     let freq = dst_fmt.sample_rate as f64;
 
-    for buf in srcs {
+    for (_j, buf) in srcs.into_iter().enumerate() {
         if buf.playing {
             // index into sound samples
             let advance = buf.frequency as f64 / freq;
@@ -349,7 +349,7 @@ fn mix(dst: &mut [u16], dst_fmt: WavFormat, srcs: &mut [RenderBuffer]) {
 
             #[allow(unused_variables)]
 
-            for frame in dst.iter_mut() {
+            for (i, frame) in dst.iter_mut().enumerate() {
                 let pos = buf.position as usize + buf.base_pos;
                 // -1..1
 
@@ -381,8 +381,8 @@ fn mix(dst: &mut [u16], dst_fmt: WavFormat, srcs: &mut [RenderBuffer]) {
                 // Ideally we want sinc/lanczos interpolation, since that's what DirectSound appears to use.
 
                 // -128..128
-                let sl = s * pan_l * vol * 128.0;
-                let sr = s * pan_r * vol * 128.0;
+                let sl = s * pan_l * vol * 32768.0;
+                let sr = s * pan_r * vol * 32768.0;
 
                 buf.position += advance;
 
@@ -399,16 +399,18 @@ fn mix(dst: &mut [u16], dst_fmt: WavFormat, srcs: &mut [RenderBuffer]) {
                     }
                 }
 
-                let [mut l, mut r] = frame.to_be_bytes();
-                // -128..127
-                let xl = (l ^ 128) as i8;
-                let xr = (r ^ 128) as i8;
+                // Signed
+                let (mut l, mut r) = ((*frame & 0xFFFF) as i16, (*frame >> 16) as i16);
 
-                // 0..255
-                l = xl.saturating_add(sl as i8) as u8 ^ 128;
-                r = xr.saturating_add(sr as i8) as u8 ^ 128;
+                // eprintln!("I: {:3} {:08} {:04X} {:04X} {:04X} {:04X} {:08X}", j, i, sl as i16, sr as i16, l, r, *frame);
 
-                *frame = u16::from_be_bytes([l, r]);
+                l = l.saturating_add(sl as i16);
+                r = r.saturating_add(sr as i16);
+
+                *frame = (l as u32 & 0xFFFF) | ((r as u32) << 16);
+
+                // eprintln!("O: {:3} {:08} {:04X} {:04X} {:04X} {:04X} {:08X}", j, i, sl as i16, sr as i16, l, r, *frame);
+
             }
         }
     }
