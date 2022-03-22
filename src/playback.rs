@@ -184,7 +184,8 @@ impl PlaybackEngine {
                     if self.track_is_playing(track) {
                         self.track_kill_note(track);
 
-                        let freq = org_key_to_freq(note.key, self.song.tracks[track].inst.freq as i16);
+                        let oct = (self.keys[track] / 12) * 12;
+                        let freq = org_key_to_freq(note.key%12 + oct, self.song.tracks[track].inst.freq as i16);
                         let l = self.get_active_buffer_for_track(track);
                         self.track_buffers[l].set_frequency(freq as u32);
 
